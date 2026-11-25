@@ -32,6 +32,18 @@ jobs:
           cd "$HOME/jerasol-orbit/linux"
           make tinyconfig
 
+          # x86_64 CPU, APIC interrupt routing, and QEMU direct-kernel boot support
+          scripts/config \
+            --enable CONFIG_SMP \
+            --enable CONFIG_X86_MPPARSE \
+            --enable CONFIG_X86_LOCAL_APIC \
+            --enable CONFIG_X86_IO_APIC \
+            --enable CONFIG_RELOCATABLE \
+            --enable CONFIG_PCI_GOANY \
+            --enable CONFIG_PCI_DIRECT \
+            --enable CONFIG_PCI_MMCONFIG \
+            --enable CONFIG_EARLY_PRINTK_SERIAL
+
           # Core 64-bit boot, ACPI, console, ELF/script execution, and virtual filesystems
           scripts/config \
             --enable CONFIG_64BIT \
@@ -106,10 +118,10 @@ jobs:
 
           make olddefconfig
 
-      - name: Verify key driver symbols survived make olddefconfig
+      - name: Verify key driver and boot symbols survived make olddefconfig
         run: |
           cd "$HOME/jerasol-orbit/linux"
-          grep -E "CONFIG_(ACPI|RD_GZIP|NVME|DRM_AMDGPU|DRM_XE|USB_XHCI_HCD|INPUT_EVDEV|CFG80211|BT|SND_SOC|VIRTIO_PCI|VHOST_VSOCK|VFIO|FUSE_FS)=" .config
+          grep -E "CONFIG_(SMP|X86_LOCAL_APIC|X86_IO_APIC|RELOCATABLE|EARLY_PRINTK_SERIAL|ACPI|RD_GZIP|NVME|DRM_AMDGPU|DRM_XE|USB_XHCI_HCD|INPUT_EVDEV|CFG80211|BT|SND_SOC|VIRTIO_PCI|VHOST_VSOCK|VFIO|FUSE_FS)=" .config
 
       - name: Collect in-repo custom drivers
         run: |
@@ -156,7 +168,8 @@ jobs:
             -initrd "$HOME/jerasol-orbit/orbit-initramfs.cpio.gz" \
             -m 1G \
             -nographic \
-            -append "console=ttyS0" | tee /tmp/qemu.log
+            -no-reboot \
+            -append "console=ttyS0 earlyprintk=serial,ttyS0,115200" | tee /tmp/qemu.log
 
           grep -q "=== JerasolOS Orbit 25-Driver QEMU Boot OK ===" /tmp/qemu.log
 
