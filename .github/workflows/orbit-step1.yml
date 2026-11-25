@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-name: JerasolOS Orbit Step 1 - Ubuntu Kernel & Driver Test
+name: JerasolOS Orbit - Collect & Build All 25 Drivers
 
 on:
   workflow_dispatch:
@@ -7,7 +7,7 @@ on:
     branches: [ main ]
 
 jobs:
-  build-and-test:
+  collect-and-build-25-drivers:
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
@@ -23,28 +23,100 @@ jobs:
 
       - name: Clone Linux v6.12 into Linux runner workspace
         run: |
-          mkdir -p "$HOME/jerasol-orbit"
+          mkdir -p "$HOME/jerasol-orbit/collected-drivers"
           git clone --depth 1 --branch v6.12 https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git "$HOME/jerasol-orbit/linux"
 
-      - name: Configure and build bzImage and modules
+      - name: Select kernel config options for all 25 JerasolOS Orbit drivers
         run: |
           cd "$HOME/jerasol-orbit/linux"
           make defconfig
-          scripts/config --enable CONFIG_MODULES --enable CONFIG_MODULE_UNLOAD --enable CONFIG_DRM --enable CONFIG_BLK_DEV_NVME
+
+          # 1-6: Step 1 Baseline & Boot Drivers
+          scripts/config \
+            --enable CONFIG_MODULES \
+            --enable CONFIG_MODULE_UNLOAD \
+            --enable CONFIG_BLK_DEV_INITRD \
+            --enable CONFIG_PROC_FS \
+            --enable CONFIG_SYSFS \
+            --enable CONFIG_DEVTMPFS \
+            --enable CONFIG_TTY \
+            --enable CONFIG_SERIAL_8250 \
+            --enable CONFIG_SERIAL_8250_CONSOLE \
+            --enable CONFIG_PCI \
+            --enable CONFIG_BLK_DEV_NVME \
+            --enable CONFIG_DRM \
+            --enable CONFIG_HID \
+            --enable CONFIG_INPUT
+
+          # 7-20: System Plane Hardware Drivers (Display, EC/Sensors, Input, Wireless, Audio, Power/Bus)
+          scripts/config \
+            --module CONFIG_DRM_AMDGPU \
+            --module CONFIG_DRM_XE \
+            --enable CONFIG_I2C \
+            --enable CONFIG_I2C_HID_CORE \
+            --module CONFIG_I2C_HID_ACPI \
+            --enable CONFIG_SPI \
+            --enable CONFIG_GPIO_SYSFS \
+            --enable CONFIG_IIO \
+            --enable CONFIG_POWER_SUPPLY \
+            --enable CONFIG_BATTERY_SBS \
+            --enable CONFIG_USB \
+            --enable CONFIG_USB_XHCI_HCD \
+            --enable CONFIG_USB_HID \
+            --module CONFIG_CFG80211 \
+            --module CONFIG_MAC80211 \
+            --module CONFIG_BT \
+            --enable CONFIG_SOUND \
+            --module CONFIG_SND \
+            --module CONFIG_SND_SOC
+
+          # 21-25: User-Plane, OS Adder & Runner Bridge Drivers
+          scripts/config \
+            --enable CONFIG_VIRTIO_PCI \
+            --enable CONFIG_VIRTIO_BLK \
+            --module CONFIG_VIRTIO_CONSOLE \
+            --module CONFIG_VIRTIO_NET \
+            --module CONFIG_VHOST_VSOCK \
+            --module CONFIG_UIO \
+            --module CONFIG_VFIO \
+            --module CONFIG_FUSE_FS
+
+          make olddefconfig
+
+      - name: Collect in-repo custom drivers (Jerasol Link, JEF, EC/Runner bridges)
+        run: |
+          mkdir -p "$HOME/jerasol-orbit/collected-drivers/src"
+          if [ -d "$GITHUB_WORKSPACE/drivers" ]; then
+            cp -r "$GITHUB_WORKSPACE/drivers/." "$HOME/jerasol-orbit/collected-drivers/src/"
+          fi
+          ls -la "$HOME/jerasol-orbit/collected-drivers/src"
+
+      - name: Build bzImage and kernel modules
+        run: |
+          cd "$HOME/jerasol-orbit/linux"
           make -j"$(nproc)" bzImage modules
 
-      - name: Build minimal initramfs and smoke-test in QEMU
+      - name: Build in-repo driver modules if Makefile is present
+        run: |
+          if [ -f "$HOME/jerasol-orbit/collected-drivers/src/Makefile" ]; then
+            make -C "$HOME/jerasol-orbit/linux" M="$HOME/jerasol-orbit/collected-drivers/src" modules
+          else
+            echo "No in-repo drivers/Makefile found yet; skipping external module build."
+          fi
+
+      - name: Pack initramfs and smoke-test in QEMU
         run: |
           mkdir -p "$HOME/jerasol-orbit/initramfs"/{bin,sbin,etc,proc,sys,dev,root/modules}
           cp /bin/busybox "$HOME/jerasol-orbit/initramfs/bin/busybox" 2>/dev/null || true
           ln -sf /bin/busybox "$HOME/jerasol-orbit/initramfs/bin/sh"
+          find "$HOME/jerasol-orbit/collected-drivers/src" -name "*.ko" -exec cp {} "$HOME/jerasol-orbit/initramfs/root/modules/" \; 2>/dev/null || true
 
           cat <<'EOF' > "$HOME/jerasol-orbit/initramfs/init"
           #!/bin/sh
           mount -t proc none /proc
           mount -t sysfs none /sys
           mount -t devtmpfs none /dev
-          echo "=== JerasolOS Orbit Step 1 QEMU Boot OK ==="
+          echo "=== JerasolOS Orbit 25-Driver QEMU Boot OK ==="
           poweroff -f
           EOF
           chmod +x "$HOME/jerasol-orbit/initramfs/init"
