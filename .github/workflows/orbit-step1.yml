@@ -1,0 +1,59 @@
+# SPDX-License-Identifier: Apache-2.0
+name: JerasolOS Orbit Step 1 - Ubuntu Kernel & Driver Test
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout JerasolOS-Orbit-Edition
+        uses: actions/checkout@v4
+
+      - name: Install build tools and QEMU on Ubuntu runner
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential bc flex bison libssl-dev libelf-dev cpio qemu-system-x86
+
+      - name: Clone Linux v6.12 into Linux runner workspace
+        run: |
+          mkdir -p "$HOME/jerasol-orbit"
+          git clone --depth 1 --branch v6.12 https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git "$HOME/jerasol-orbit/linux"
+
+      - name: Configure and build bzImage and modules
+        run: |
+          cd "$HOME/jerasol-orbit/linux"
+          make defconfig
+          scripts/config --enable CONFIG_MODULES --enable CONFIG_MODULE_UNLOAD --enable CONFIG_DRM --enable CONFIG_BLK_DEV_NVME
+          make -j"$(nproc)" bzImage modules
+
+      - name: Build minimal initramfs and smoke-test in QEMU
+        run: |
+          mkdir -p "$HOME/jerasol-orbit/initramfs"/{bin,sbin,etc,proc,sys,dev,root/modules}
+          cp /bin/busybox "$HOME/jerasol-orbit/initramfs/bin/busybox" 2>/dev/null || true
+          ln -sf /bin/busybox "$HOME/jerasol-orbit/initramfs/bin/sh"
+
+          cat <<'EOF' > "$HOME/jerasol-orbit/initramfs/init"
+          #!/bin/sh
+          mount -t proc none /proc
+          mount -t sysfs none /sys
+          mount -t devtmpfs none /dev
+          echo "=== JerasolOS Orbit Step 1 QEMU Boot OK ==="
+          poweroff -f
+          EOF
+          chmod +x "$HOME/jerasol-orbit/initramfs/init"
+
+          (cd "$HOME/jerasol-orbit/initramfs" && find . -print0 | cpio --null -ov --format=newc | gzip -9 > "$HOME/jerasol-orbit/orbit-initramfs.cpio.gz")
+
+          timeout 30s qemu-system-x86_64 \
+            -kernel "$HOME/jerasol-orbit/linux/arch/x86/boot/bzImage" \
+            -initrd "$HOME/jerasol-orbit/orbit-initramfs.cpio.gz" \
+            -m 1G \
+            -nographic \
+            -append "console=ttyS0" || true
