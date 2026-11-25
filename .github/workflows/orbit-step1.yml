@@ -43,6 +43,7 @@ jobs:
             --enable CONFIG_TMPFS \
             --enable CONFIG_SHMEM \
             --enable CONFIG_BLK_DEV_INITRD \
+            --enable CONFIG_RD_GZIP \
             --enable CONFIG_PROC_FS \
             --enable CONFIG_SYSFS \
             --enable CONFIG_DEVTMPFS \
@@ -108,7 +109,7 @@ jobs:
       - name: Verify key driver symbols survived make olddefconfig
         run: |
           cd "$HOME/jerasol-orbit/linux"
-          grep -E "CONFIG_(ACPI|NVME|DRM_AMDGPU|DRM_XE|USB_XHCI_HCD|INPUT_EVDEV|CFG80211|BT|SND_SOC|VIRTIO_PCI|VHOST_VSOCK|VFIO|FUSE_FS)=" .config
+          grep -E "CONFIG_(ACPI|RD_GZIP|NVME|DRM_AMDGPU|DRM_XE|USB_XHCI_HCD|INPUT_EVDEV|CFG80211|BT|SND_SOC|VIRTIO_PCI|VHOST_VSOCK|VFIO|FUSE_FS)=" .config
 
       - name: Collect in-repo custom drivers
         run: |
@@ -121,12 +122,12 @@ jobs:
       - name: Compile bzImage and kernel modules
         run: |
           cd "$HOME/jerasol-orbit/linux"
-          make -j"$(nproc)" bzImage modules
+          make -j"$(nproc)" CC="gcc -std=gnu11" bzImage modules
 
       - name: Build in-repo driver modules if Makefile exists
         run: |
           if [ -f "$HOME/jerasol-orbit/collected-drivers/src/Makefile" ]; then
-            make -C "$HOME/jerasol-orbit/linux" M="$HOME/jerasol-orbit/collected-drivers/src" modules
+            make -C "$HOME/jerasol-orbit/linux" M="$HOME/jerasol-orbit/collected-drivers/src" CC="gcc -std=gnu11" modules
           else
             echo "No in-repo drivers/Makefile found yet; skipping external module build."
           fi
