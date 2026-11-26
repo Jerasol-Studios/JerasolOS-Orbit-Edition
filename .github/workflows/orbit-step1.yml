@@ -36,7 +36,7 @@ jobs:
         run: |
           mkdir -p "$HOME/jerasol-orbit"
           if [ ! -d "$HOME/jerasol-orbit/linux/.git" ]; then
-            git clone --depth 1 --branch v6.12.y https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git "$HOME/jerasol-orbit/linux"
+            git clone --depth 1 --branch linux-6.12.y https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git "$HOME/jerasol-orbit/linux"
           fi
 
       - name: Configure kernel for 25 JerasolOS Orbit drivers
