@@ -19,7 +19,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-          sudo apt-get install -y qemu-system-x86 busybox-static
+          sudo apt-get install -y qemu-system-x86 busybox-static \
             build-essential bc flex bison libssl-dev libelf-dev dwarves \
             cpio busybox-static qemu-system-x86
       
