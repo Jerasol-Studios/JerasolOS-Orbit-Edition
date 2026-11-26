@@ -22,12 +22,25 @@ jobs:
             build-essential bc flex bison libssl-dev libelf-dev dwarves \
             cpio busybox-static qemu-system-x86
 
-      - name: Clone Linux v6.12 into Linux runner workspace
+      - name: Cache Linux v6.12 source and compiled build
+        id: kernel-cache
+        uses: actions/cache@v4
+        with:
+          path: /home/runner/jerasol-orbit/linux
+          key: linux-v6.12-build-${{ runner.os }}-${{ hashFiles('.github/workflows/*.yml') }}
+          restore-keys: |
+            linux-v6.12-build-${{ runner.os }}-
+
+      - name: Clone Linux v6.12 if not restored from cache
+        if: "!steps.kernel-cache.outputs.cache-hit && !hashFiles('/home/runner/jerasol-orbit/linux/Makefile')"
         run: |
-          mkdir -p "$HOME/jerasol-orbit/collected-drivers"
-          git clone --depth 1 --branch v6.12 https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git "$HOME/jerasol-orbit/linux"
+          mkdir -p "$HOME/jerasol-orbit"
+          if [ ! -d "$HOME/jerasol-orbit/linux/.git" ]; then
+            git clone --depth 1 --branch v6.12 https://kernel.org "$HOME/jerasol-orbit/linux"
+          fi
 
       - name: Build stripped-down kernel config for 25 JerasolOS Orbit drivers
+        if: steps.kernel-cache.outputs.cache-hit != 'true'
         run: |
           cd "$HOME/jerasol-orbit/linux"
           make tinyconfig
