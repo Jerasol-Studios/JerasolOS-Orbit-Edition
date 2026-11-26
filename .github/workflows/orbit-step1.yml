@@ -27,27 +27,26 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /home/runner/jerasol-orbit/linux
-          key: linux-v6.12-build-${{ runner.os }}-${{ hashFiles('.github/workflows/*.yml') }}
+          key: linux-v6.12-build-v2-${{ runner.os }}-${{ hashFiles('.github/workflows/*.yml') }}
           restore-keys: |
-            linux-v6.12-build-${{ runner.os }}-
+            linux-v6.12-build-v2-${{ runner.os }}-
 
       - name: Clone Linux v6.12 if not restored from cache
-        if: "!steps.kernel-cache.outputs.cache-hit && !hashFiles('/home/runner/jerasol-orbit/linux/Makefile')"
+        if: steps.kernel-cache.outputs.cache-hit != 'true'
         run: |
           mkdir -p "$HOME/jerasol-orbit"
           if [ ! -d "$HOME/jerasol-orbit/linux/.git" ]; then
             git clone --depth 1 --branch v6.12 https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git "$HOME/jerasol-orbit/linux"
           fi
 
-      - name: Build stripped-down kernel config for 25 JerasolOS Orbit drivers
+      - name: Configure kernel for 25 JerasolOS Orbit drivers
         if: steps.kernel-cache.outputs.cache-hit != 'true'
         run: |
           cd "$HOME/jerasol-orbit/linux"
-          make tinyconfig
+          make x86_64_defconfig
 
           # x86_64 CPU, APIC interrupt routing, and QEMU direct-kernel boot support
           scripts/config \
-            --enable CONFIG_EXPERT \
             --enable CONFIG_SMP \
             --enable CONFIG_X86_MPPARSE \
             --enable CONFIG_X86_LOCAL_APIC \
@@ -79,8 +78,6 @@ jobs:
             --enable CONFIG_SERIAL_8250_CONSOLE \
             --enable CONFIG_SERIAL_8250_PCI \
             --enable CONFIG_SERIAL_8250_PNP \
-            --set-val CONFIG_SERIAL_8250_NR_UARTS 4 \
-            --set-val CONFIG_SERIAL_8250_RUNTIME_UARTS 4 \
             --enable CONFIG_MODULES \
             --enable CONFIG_MODULE_UNLOAD \
             --enable CONFIG_USB_SUPPORT \
@@ -187,7 +184,7 @@ jobs:
             -m 1G \
             -nographic \
             -no-reboot \
-            -append "console=ttyS0 earlyprintk=serial,ttyS0,115200 panic=1" | tee /tmp/qemu.log
+            -append "console=ttyS0,115200 earlyprintk=serial,ttyS0,115200,keep ignore_loglevel panic=1" | tee /tmp/qemu.log
 
           grep -q "=== JerasolOS Orbit 25-Driver QEMU Boot OK ===" /tmp/qemu.log
 
