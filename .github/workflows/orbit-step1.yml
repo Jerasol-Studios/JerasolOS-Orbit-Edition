@@ -19,10 +19,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-          sudo apt-get install -y qemu-system-x86 busybox-static \
             build-essential bc flex bison libssl-dev libelf-dev dwarves \
             cpio busybox-static qemu-system-x86
-      
 
       - name: Clone Linux v6.12 into Linux runner workspace
         run: |
@@ -36,6 +34,7 @@ jobs:
 
           # x86_64 CPU, APIC interrupt routing, and QEMU direct-kernel boot support
           scripts/config \
+            --enable CONFIG_EXPERT \
             --enable CONFIG_SMP \
             --enable CONFIG_X86_MPPARSE \
             --enable CONFIG_X86_LOCAL_APIC \
@@ -44,6 +43,7 @@ jobs:
             --enable CONFIG_PCI_GOANY \
             --enable CONFIG_PCI_DIRECT \
             --enable CONFIG_PCI_MMCONFIG \
+            --enable CONFIG_EARLY_PRINTK \
             --enable CONFIG_EARLY_PRINTK_SERIAL
 
           # Core 64-bit boot, ACPI, console, ELF/script execution, and virtual filesystems
@@ -51,7 +51,6 @@ jobs:
             --enable CONFIG_64BIT \
             --enable CONFIG_ACPI \
             --enable CONFIG_PRINTK \
-            --enable CONFIG_EARLY_PRINTK \
             --enable CONFIG_BINFMT_ELF \
             --enable CONFIG_BINFMT_SCRIPT \
             --enable CONFIG_TMPFS \
@@ -65,6 +64,10 @@ jobs:
             --enable CONFIG_TTY \
             --enable CONFIG_SERIAL_8250 \
             --enable CONFIG_SERIAL_8250_CONSOLE \
+            --enable CONFIG_SERIAL_8250_PCI \
+            --enable CONFIG_SERIAL_8250_PNP \
+            --set-val CONFIG_SERIAL_8250_NR_UARTS 4 \
+            --set-val CONFIG_SERIAL_8250_RUNTIME_UARTS 4 \
             --enable CONFIG_MODULES \
             --enable CONFIG_MODULE_UNLOAD \
             --enable CONFIG_USB_SUPPORT \
@@ -123,7 +126,7 @@ jobs:
       - name: Verify key driver and boot symbols survived make olddefconfig
         run: |
           cd "$HOME/jerasol-orbit/linux"
-          grep -E "CONFIG_(SMP|X86_LOCAL_APIC|X86_IO_APIC|RELOCATABLE|EARLY_PRINTK_SERIAL|ACPI|RD_GZIP|NVME|DRM_AMDGPU|DRM_XE|USB_XHCI_HCD|INPUT_EVDEV|CFG80211|BT|SND_SOC|VIRTIO_PCI|VHOST_VSOCK|VFIO|FUSE_FS)=" .config
+          grep -E "CONFIG_(SMP|X86_LOCAL_APIC|X86_IO_APIC|RELOCATABLE|EARLY_PRINTK_SERIAL|SERIAL_8250_CONSOLE|ACPI|RD_GZIP|NVME|DRM_AMDGPU|DRM_XE|USB_XHCI_HCD|INPUT_EVDEV|CFG80211|BT|SND_SOC|VIRTIO_PCI|VHOST_VSOCK|VFIO|FUSE_FS)=" .config
 
       - name: Collect in-repo custom drivers
         run: |
@@ -150,28 +153,28 @@ jobs:
         run: |
           mkdir -p "$HOME/jerasol-orbit/initramfs"/{bin,sbin,etc,proc,sys,dev,root/modules}
           cp /bin/busybox "$HOME/jerasol-orbit/initramfs/bin/busybox"
-          ln -sf /bin/busybox "$HOME/jerasol-orbit/initramfs/bin/sh"
+          ln -sf busybox "$HOME/jerasol-orbit/initramfs/bin/sh"
           find "$HOME/jerasol-orbit/collected-drivers/src" -name "*.ko" -exec cp {} "$HOME/jerasol-orbit/initramfs/root/modules/" \; 2>/dev/null || true
 
           cat <<'EOF' > "$HOME/jerasol-orbit/initramfs/init"
           #!/bin/sh
-          mount -t proc none /proc
-          mount -t sysfs none /sys
-          mount -t devtmpfs none /dev
-          echo "=== JerasolOS Orbit 25-Driver QEMU Boot OK ==="
-          poweroff -f
+          /bin/busybox mount -t proc none /proc
+          /bin/busybox mount -t sysfs none /sys
+          /bin/busybox mount -t devtmpfs none /dev
+          /bin/busybox echo "=== JerasolOS Orbit 25-Driver QEMU Boot OK ==="
+          /bin/busybox poweroff -f
           EOF
           chmod +x "$HOME/jerasol-orbit/initramfs/init"
 
           (cd "$HOME/jerasol-orbit/initramfs" && find . -print0 | cpio --null -ov --format=newc | gzip -9 > "$HOME/jerasol-orbit/orbit-initramfs.cpio.gz")
 
-          timeout 30s qemu-system-x86_64 \
+          timeout 120s qemu-system-x86_64 \
             -kernel "$HOME/jerasol-orbit/linux/arch/x86/boot/bzImage" \
             -initrd "$HOME/jerasol-orbit/orbit-initramfs.cpio.gz" \
             -m 1G \
             -nographic \
             -no-reboot \
-            -append "console=ttyS0 earlyprintk=serial,ttyS0,115200" | tee /tmp/qemu.log
+            -append "console=ttyS0 earlyprintk=serial,ttyS0,115200 panic=1" | tee /tmp/qemu.log
 
           grep -q "=== JerasolOS Orbit 25-Driver QEMU Boot OK ===" /tmp/qemu.log
 
