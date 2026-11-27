@@ -22,14 +22,14 @@ jobs:
             build-essential bc flex bison libssl-dev libelf-dev dwarves \
             cpio busybox-static qemu-system-x86
 
-      - name: Cache Linux v6.12 source and compiled build
+      - name: Restore Linux 6.12.y source and compiled build from cache
         id: kernel-cache
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: /home/runner/jerasol-orbit/linux
-          key: linux-v6.12-build-v2-${{ runner.os }}-${{ hashFiles('.github/workflows/*.yml') }}
+          key: linux-6.12.y-build-v3-${{ runner.os }}-${{ hashFiles('.github/workflows/*.yml') }}
           restore-keys: |
-            linux-v6.12-build-v2-${{ runner.os }}-
+            linux-6.12.y-build-v3-${{ runner.os }}-
 
       - name: Clone Linux v6.12 if not restored from cache
         if: steps.kernel-cache.outputs.cache-hit != 'true'
@@ -150,6 +150,13 @@ jobs:
         run: |
           cd "$HOME/jerasol-orbit/linux"
           make -j"$(nproc)" CC="gcc -std=gnu11" bzImage modules
+
+      - name: Save compiled kernel build to cache
+        if: steps.kernel-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: /home/runner/jerasol-orbit/linux
+          key: linux-6.12.y-build-v3-${{ runner.os }}-${{ hashFiles('.github/workflows/*.yml') }}
 
       - name: Build in-repo driver modules if Makefile exists
         run: |
