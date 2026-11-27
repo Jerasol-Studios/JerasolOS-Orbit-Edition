@@ -179,6 +179,8 @@ jobs:
           (cd "$HOME/jerasol-orbit/initramfs" && find . -print0 | cpio --null -ov --format=newc | gzip -9 > "$HOME/jerasol-orbit/orbit-initramfs.cpio.gz")
 
           timeout 120s qemu-system-x86_64 \
+            -cpu max \
+            -machine q35 \
             -kernel "$HOME/jerasol-orbit/linux/arch/x86/boot/bzImage" \
             -initrd "$HOME/jerasol-orbit/orbit-initramfs.cpio.gz" \
             -m 1G \
